@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+.cache/
+.DS_Store
+*.log
+__pycache__/
+*.pyc
+backend/debug/
+backend/audiveris/
+.env
+.env.local
+*.tsbuildinfo
+.github-deployer-key.json

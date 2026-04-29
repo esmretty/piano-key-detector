@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1115" />
+    <title>Piano Key Detector</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Piano Key Detector</h1>
+        <div class="controls">
+          <label class="file-btn">
+            <input id="file-input" type="file" accept=".mid,.midi,.xml,.musicxml,.mxl,.png,.jpg,.jpeg,.pdf" hidden />
+            <span>選擇琴譜</span>
+          </label>
+          <label class="append-btn ghost-btn" title="把這個檔案的內容追加到目前琴譜後面">
+            <input id="append-input" type="file" accept=".mid,.midi,.xml,.musicxml,.mxl,.png,.jpg,.jpeg,.pdf" hidden disabled />
+            <span>＋追加</span>
+          </label>
+          <button id="bookmarks-btn" class="ghost-btn" title="書籤">📑</button>
+          <button id="play-btn" disabled>▶</button>
+          <button id="stop-btn" disabled>■</button>
+          <label class="bpm">
+            <span>BPM</span>
+            <input id="bpm-input" type="number" min="20" max="300" value="60" />
+          </label>
+          <label class="sound-toggle">
+            <input id="sound-toggle" type="checkbox" checked />
+            <span>音訊</span>
+          </label>
+        </div>
+        <div class="progress" id="progress" hidden>
+          <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        </div>
+        <div id="status" class="status">請選擇 .mid / .musicxml / 圖片琴譜</div>
+      </header>
+
+      <dialog id="bookmarks-dialog" class="bm-dialog">
+        <form method="dialog" class="bm-content">
+          <div class="bm-header">
+            <h2>書籤</h2>
+            <button value="cancel" class="bm-close" aria-label="關閉">✕</button>
+          </div>
+          <div class="bm-save">
+            <input id="bookmark-name" type="text" placeholder="名稱（留空會用琴譜標題）" maxlength="80" />
+            <button type="button" id="bookmark-save-btn">儲存目前琴譜</button>
+          </div>
+          <ul id="bookmark-list" class="bm-list"></ul>
+          <div class="bm-empty" id="bm-empty">還沒有書籤。載入一份琴譜後在這裡儲存，下次打開就能直接載入。</div>
+        </form>
+      </dialog>
+
+      <section id="sheet-panel" class="panel sheet-panel">
+        <div id="sheet-container"></div>
+      </section>
+
+      <section id="piano-panel" class="panel piano-panel">
+        <div id="piano-scroll">
+          <svg id="piano" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

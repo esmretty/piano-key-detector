@@ -1,0 +1,17 @@
+{
+  "name": "piano-key-detector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sheet music to piano-key visualizer (MIDI / MusicXML / OMR image)",
+  "scripts": {
+    "install:all": "npm --prefix frontend install && npm --prefix backend install",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend start",
+    "dev": "concurrently -n FE,BE -c blue,magenta \"npm:dev:frontend\" \"npm:dev:backend\"",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "piano-key-detector-backend",
+  "version": "1.0.0",
+  "description": "Express backend that runs Oemer OMR for piano-key-detector",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1",
+    "multer": "^2.1.1",
+    "pdf-to-img": "^6.0.0"
+  }
+}
