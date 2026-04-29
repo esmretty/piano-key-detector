@@ -11,6 +11,7 @@ const crypto = require("crypto");
 
 const { fixMusicXML, dumpDebug } = require("./musicxml-fixup");
 const { audiverisExtract, audiverisAvailable, AUDIVERIS_EXE } = require("./audiveris");
+const bookmarksStore = require("./bookmarks-store");
 
 // OMR_ENGINE: 'audiveris' | 'oemer' | 'auto' (try audiveris, fall back to oemer)
 const OMR_ENGINE = (process.env.OMR_ENGINE || "auto").toLowerCase();
@@ -167,6 +168,58 @@ const omrLimiter = rateLimit({
   message: { error: "OMR 請求太頻繁，請稍等再試" },
 });
 app.use("/api/omr", omrLimiter);
+
+// Rate-limit bookmark writes to make graffiti / flood inconvenient (a
+// motivated attacker can rotate IPs but this kills the casual case).
+const bookmarksWriteLimiter = rateLimit({
+  windowMs: Number(process.env.BOOKMARKS_WRITE_WINDOW_MS || 60_000),
+  max: Number(process.env.BOOKMARKS_WRITE_MAX || 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "雲端書籤寫入太頻繁，請稍等" },
+});
+
+// === Cloud bookmarks (shared, no auth) ===
+app.get("/api/bookmarks", async (_req, res) => {
+  if (!bookmarksStore.ENABLED) {
+    return res.status(503).json({ error: "cloud bookmarks disabled" });
+  }
+  try {
+    const list = await bookmarksStore.getList();
+    res.json({ bookmarks: list });
+  } catch (e) {
+    console.error("[bookmarks] read failed:", e);
+    res.status(500).json({ error: "failed to read bookmarks" });
+  }
+});
+
+// PUT replaces the whole list (frontend keeps its full local copy and
+// uploads everything on every change). Simple, no merge conflicts.
+app.put(
+  "/api/bookmarks",
+  bookmarksWriteLimiter,
+  express.json({ limit: "60mb" }),
+  async (req, res) => {
+    if (!bookmarksStore.ENABLED) {
+      return res.status(503).json({ error: "cloud bookmarks disabled" });
+    }
+    try {
+      const incoming = Array.isArray(req.body)
+        ? req.body
+        : Array.isArray(req.body?.bookmarks)
+          ? req.body.bookmarks
+          : null;
+      if (!incoming) {
+        return res.status(400).json({ error: "expected an array of bookmarks" });
+      }
+      const saved = await bookmarksStore.putList(incoming);
+      res.json({ bookmarks: saved, count: saved.length });
+    } catch (e) {
+      console.warn("[bookmarks] write rejected:", e?.message);
+      res.status(400).json({ error: String(e?.message ?? e) });
+    }
+  },
+);
 
 app.get("/api/health", (_req, res) => {
   res.json({

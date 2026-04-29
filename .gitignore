@@ -12,3 +12,4 @@ backend/audiveris/
 .env.local
 *.tsbuildinfo
 .github-deployer-key.json
+.claude/

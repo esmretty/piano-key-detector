@@ -9,6 +9,7 @@ import {
   listBookmarks,
   saveBookmark,
   deleteBookmark,
+  refreshFromCloud,
   extractTitle,
   type Bookmark,
 } from "./bookmarks";
@@ -23,6 +24,7 @@ const playBtn = $<HTMLButtonElement>("play-btn");
 const stopBtn = $<HTMLButtonElement>("stop-btn");
 const bpmInput = $<HTMLInputElement>("bpm-input");
 const soundToggle = $<HTMLInputElement>("sound-toggle");
+const layoutSelect = $<HTMLSelectElement>("layout-select");
 const statusEl = $("status");
 const sheetContainer = $("sheet-container");
 const pianoSvg = document.getElementById("piano") as unknown as SVGSVGElement;
@@ -79,6 +81,28 @@ function hideProgress() {
 // ===== controls =====
 
 soundToggle.addEventListener("change", () => player.setEnabled(soundToggle.checked));
+
+// Layout selector — switches OSMD rendering style (default / compact / big).
+// Persist the choice so refresh keeps it.
+const SAVED_LAYOUT_KEY = "pkd.layout";
+const savedLayout = (localStorage.getItem(SAVED_LAYOUT_KEY) as "default" | "compact" | "big") || "default";
+layoutSelect.value = savedLayout;
+sheet.setLayout(savedLayout);
+layoutSelect.addEventListener("change", () => {
+  const v = layoutSelect.value as "default" | "compact" | "big";
+  localStorage.setItem(SAVED_LAYOUT_KEY, v);
+  sheet.setLayout(v);
+});
+
+// Best-effort orientation lock for installed PWAs / fullscreen mode.
+// Most browsers reject the call outside fullscreen — that's fine, the CSS
+// portrait-overlay catches the rest.
+try {
+  const so: any = (screen as any).orientation;
+  if (so && typeof so.lock === "function") {
+    so.lock("landscape").catch(() => {});
+  }
+} catch { /* unsupported */ }
 
 bpmInput.addEventListener("change", () => {
   const v = clampInt(bpmInput.value, 20, 300, 60);
@@ -425,9 +449,16 @@ function scheduleStep() {
 
 // ===== bookmarks =====
 
-bookmarksBtn.addEventListener("click", () => {
-  renderBookmarks();
+bookmarksBtn.addEventListener("click", async () => {
+  renderBookmarks();          // instant render from cache
   bookmarksDialog.showModal();
+  // Refresh from cloud in background; re-render once it returns.
+  try {
+    await refreshFromCloud();
+    renderBookmarks();
+  } catch (e) {
+    console.warn("bookmarks refresh failed", e);
+  }
 });
 
 bookmarksDialog.addEventListener("click", (e) => {
@@ -435,12 +466,22 @@ bookmarksDialog.addEventListener("click", (e) => {
   if (e.target === bookmarksDialog) bookmarksDialog.close();
 });
 
-bookmarkSaveBtn.addEventListener("click", () => {
+bookmarkSaveBtn.addEventListener("click", async () => {
   if (!currentXml) return;
   const name = bookmarkNameInput.value.trim() || extractTitle(currentXml) || `琴譜 ${new Date().toLocaleString()}`;
-  saveBookmark(name, currentXml);
-  bookmarkNameInput.value = "";
-  renderBookmarks();
+  bookmarkSaveBtn.disabled = true;
+  bookmarkSaveBtn.textContent = "儲存中…";
+  try {
+    await saveBookmark(name, currentXml);
+    bookmarkNameInput.value = "";
+    renderBookmarks();
+  } catch (e: any) {
+    alert(e?.message ?? "雲端儲存失敗");
+    renderBookmarks();
+  } finally {
+    bookmarkSaveBtn.disabled = !currentXml;
+    bookmarkSaveBtn.textContent = "儲存目前琴譜";
+  }
 });
 
 function renderBookmarks() {
@@ -511,10 +552,16 @@ function renderBookmarkRow(bm: Bookmark): HTMLLIElement {
   delBtn.type = "button";
   delBtn.className = "bm-delete";
   delBtn.textContent = "刪除";
-  delBtn.addEventListener("click", () => {
-    if (!confirm(`刪除書籤「${bm.name}」？`)) return;
-    deleteBookmark(bm.id);
-    renderBookmarks();
+  delBtn.addEventListener("click", async () => {
+    if (!confirm(`刪除雲端書籤「${bm.name}」？這會影響所有人。`)) return;
+    delBtn.disabled = true;
+    try {
+      await deleteBookmark(bm.id);
+      renderBookmarks();
+    } catch (e: any) {
+      alert(e?.message ?? "雲端刪除失敗");
+      delBtn.disabled = false;
+    }
   });
 
   li.appendChild(nameWrap);

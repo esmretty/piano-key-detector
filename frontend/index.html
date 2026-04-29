@@ -10,26 +10,30 @@
   <body>
     <div id="app">
       <header class="topbar">
-        <h1>Piano Key Detector</h1>
         <div class="controls">
           <label class="file-btn">
             <input id="file-input" type="file" accept=".mid,.midi,.xml,.musicxml,.mxl,.png,.jpg,.jpeg,.pdf" hidden />
-            <span>選擇琴譜</span>
+            <span>📂</span>
           </label>
-          <label class="append-btn ghost-btn" title="把這個檔案的內容追加到目前琴譜後面">
+          <label class="append-btn ghost-btn" title="追加">
             <input id="append-input" type="file" accept=".mid,.midi,.xml,.musicxml,.mxl,.png,.jpg,.jpeg,.pdf" hidden disabled />
-            <span>＋追加</span>
+            <span>＋</span>
           </label>
           <button id="bookmarks-btn" class="ghost-btn" title="書籤">📑</button>
-          <button id="play-btn" disabled>▶</button>
+          <button id="play-btn" class="play-btn" disabled>▶</button>
           <button id="stop-btn" disabled>■</button>
           <label class="bpm">
             <span>BPM</span>
             <input id="bpm-input" type="number" min="20" max="300" value="60" />
           </label>
+          <select id="layout-select" class="layout-select" title="樂譜版面">
+            <option value="default">預設</option>
+            <option value="compact">緊湊</option>
+            <option value="big">大字</option>
+          </select>
           <label class="sound-toggle">
             <input id="sound-toggle" type="checkbox" checked />
-            <span>音訊</span>
+            <span>🔊</span>
           </label>
         </div>
         <div class="progress" id="progress" hidden>
@@ -38,18 +42,27 @@
         <div id="status" class="status">請選擇 .mid / .musicxml / 圖片琴譜</div>
       </header>
 
+      <div id="rotate-overlay" class="rotate-overlay">
+        <div class="rotate-overlay-inner">
+          <div class="rotate-icon">📱↺</div>
+          <h2>請把裝置轉成橫向</h2>
+          <p>這個 app 為了讓你看到完整鋼琴 + 譜面，需要橫向使用</p>
+        </div>
+      </div>
+
       <dialog id="bookmarks-dialog" class="bm-dialog">
         <form method="dialog" class="bm-content">
           <div class="bm-header">
-            <h2>書籤</h2>
+            <h2>☁️ 雲端書籤</h2>
             <button value="cancel" class="bm-close" aria-label="關閉">✕</button>
           </div>
+          <div class="bm-hint">大家共用、不需登入。儲存/刪除會立即同步給所有人。</div>
           <div class="bm-save">
             <input id="bookmark-name" type="text" placeholder="名稱（留空會用琴譜標題）" maxlength="80" />
             <button type="button" id="bookmark-save-btn">儲存目前琴譜</button>
           </div>
           <ul id="bookmark-list" class="bm-list"></ul>
-          <div class="bm-empty" id="bm-empty">還沒有書籤。載入一份琴譜後在這裡儲存，下次打開就能直接載入。</div>
+          <div class="bm-empty" id="bm-empty">雲端還沒有書籤。載入一份琴譜後在這裡儲存。</div>
         </form>
       </dialog>
 

@@ -40,18 +40,72 @@ html, body {
 .topbar {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 8px 12px;
+  padding: 6px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-.topbar h1 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.layout-select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  min-height: 36px;
+}
+
+.play-btn {
+  background: linear-gradient(135deg, #88e0a8, #4ec38e) !important;
+  color: #0a2d1a !important;
+  font-weight: 700;
+  border: none !important;
+  font-size: 18px !important;
+}
+.play-btn:disabled {
+  background: var(--panel-2) !important;
+  color: var(--muted) !important;
+}
+
+/* ===== Rotate-to-landscape overlay ===== */
+.rotate-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+}
+.rotate-overlay-inner {
+  max-width: 320px;
+}
+.rotate-icon {
+  font-size: 64px;
+  animation: rotate-hint 2s ease-in-out infinite;
+  margin-bottom: 16px;
+}
+@keyframes rotate-hint {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(90deg); }
+}
+.rotate-overlay h2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.rotate-overlay p {
+  font-size: 14px;
   color: var(--muted);
+  margin: 0;
+}
+/* Show overlay only when small device AND portrait. Above 1024px (tablet
+ * landscape, desktop, etc.) the layout is fine in either orientation. */
+@media (orientation: portrait) and (max-width: 1024px) {
+  .rotate-overlay { display: flex; }
+  .topbar, .panel { display: none !important; }
 }
 
 .controls {
@@ -158,6 +212,11 @@ html, body {
   justify-content: space-between;
 }
 .bm-header h2 { margin: 0; font-size: 17px; }
+.bm-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: -4px 0 4px;
+}
 .bm-close {
   background: transparent;
   border: none;
@@ -326,10 +385,31 @@ html, body {
 /* ===== Piano ===== */
 .piano-panel {
   background: #0a0d12;
-  height: 28dvh;
-  min-height: 140px;
-  max-height: 240px;
+  height: 32dvh;
+  min-height: 120px;
+  max-height: 260px;
   border-top: 1px solid var(--border);
+}
+
+/* In landscape on small screens, give the keyboard more vertical room
+ * since horizontal width is plentiful but vertical is the constraint. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .piano-panel {
+    height: 38dvh;
+    min-height: 120px;
+    max-height: 220px;
+  }
+  .topbar { padding: 4px 8px; gap: 2px; }
+  .controls button,
+  .controls .file-btn span,
+  .controls .ghost-btn,
+  .controls .append-btn span {
+    padding: 6px 10px;
+    min-height: 34px;
+    font-size: 14px;
+  }
+  .controls .play-btn { font-size: 16px !important; }
+  .status { font-size: 11px; }
 }
 
 #piano-scroll {
@@ -338,12 +418,16 @@ html, body {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  display: flex;
+  align-items: center;
 }
 
 #piano {
   display: block;
   height: 100%;
-  touch-action: none; /* let pointerdown fire reliably on touch keys */
+  width: 100%;          /* fill container; preserveAspectRatio handles scale */
+  max-width: 100%;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }

@@ -50,6 +50,42 @@ export class SheetView {
     this.osmd = new OpenSheetMusicDisplay(container, opts);
   }
 
+  /** Switch sheet rendering layout. Re-renders the score in place. */
+  setLayout(mode: "default" | "compact" | "big") {
+    const o = this.osmd as any;
+    if (mode === "compact") {
+      o.setOptions?.({
+        drawingParameters: "compacttight",
+        drawTitle: false,
+        drawSubtitle: false,
+        drawComposer: false,
+        drawPartNames: false,
+      });
+      o.zoom = 0.85;
+    } else if (mode === "big") {
+      o.setOptions?.({
+        drawingParameters: "default",
+        drawTitle: true,
+        drawSubtitle: false,
+        drawComposer: false,
+        drawPartNames: false,
+      });
+      o.zoom = 1.5;
+    } else {
+      o.setOptions?.({
+        drawingParameters: "default",
+        drawTitle: true,
+        drawSubtitle: true,
+        drawComposer: true,
+        drawPartNames: false,
+      });
+      o.zoom = 1.0;
+    }
+    if (this.lastLoadedXml) {
+      try { this.osmd.render(); } catch (e) { console.warn("re-render failed:", e); }
+    }
+  }
+
   async loadXml(xml: string) {
     this.clearActive();
     // Strip elements that crash OSMD's render path. Audiveris occasionally

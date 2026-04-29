@@ -51,10 +51,13 @@ export class Piano {
     const totalWhites = whiteKeyIndex(LAST_MIDI + 1); // count whites including LAST_MIDI
     const width = totalWhites * WHITE_W;
     const height = WHITE_H;
+    // viewBox + preserveAspectRatio="none" + CSS width:100% → keys stretch
+    // horizontally to fill the panel. We keep the height proportionally
+    // sensible by clamping piano-panel height in CSS instead.
     this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    this.svg.setAttribute("width", String(width));
-    this.svg.setAttribute("height", String(height));
-    this.svg.setAttribute("preserveAspectRatio", "xMinYMid meet");
+    this.svg.removeAttribute("width");
+    this.svg.removeAttribute("height");
+    this.svg.setAttribute("preserveAspectRatio", "none");
 
     const ns = "http://www.w3.org/2000/svg";
     const whiteGroup = document.createElementNS(ns, "g");
