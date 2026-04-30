@@ -37,6 +37,7 @@ async function audiverisExtract(imgPath, outDir) {
     throw new Error(`Audiveris not installed at ${AUDIVERIS_EXE}`);
   }
   const t0 = Date.now();
+  const TIMEOUT_MS = Number(process.env.AUDIVERIS_TIMEOUT_MS || 5 * 60 * 1000);
   await new Promise((resolve, reject) => {
     const child = spawn(
       AUDIVERIS_EXE,
@@ -44,6 +45,12 @@ async function audiverisExtract(imgPath, outDir) {
       { windowsHide: true },
     );
     let tail = "";
+    let timedOut = false;
+    const killer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill("SIGKILL"); } catch {}
+      reject(new Error(`Audiveris timeout after ${TIMEOUT_MS / 1000}s`));
+    }, TIMEOUT_MS);
     child.stdout.on("data", (d) => {
       tail = (tail + d.toString()).slice(-2000);
       process.stdout.write(`[audiveris] ${d}`);
@@ -52,8 +59,10 @@ async function audiverisExtract(imgPath, outDir) {
       tail = (tail + d.toString()).slice(-2000);
       process.stderr.write(`[audiveris] ${d}`);
     });
-    child.on("error", reject);
+    child.on("error", (err) => { clearTimeout(killer); if (!timedOut) reject(err); });
     child.on("close", (code) => {
+      clearTimeout(killer);
+      if (timedOut) return; // already rejected
       if (code !== 0) {
         reject(new Error(`Audiveris exit ${code}: ${tail.slice(-400)}`));
       } else {

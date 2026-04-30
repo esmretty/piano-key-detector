@@ -78,10 +78,33 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 RUN pip install --no-cache-dir oemer onnxruntime
 
-# Pre-warm Oemer's Python imports so first request isn't a 30-second cold-start.
-# Model checkpoints are downloaded on first inference; can't pre-download
-# without running on a real image, so we accept that cost on first OMR call.
+# Pre-warm Oemer's Python imports.
 RUN python -c "import oemer.ete; print('oemer ete imported')"
+
+# Pre-download Oemer model checkpoints so the first OMR request doesn't pay
+# the 50–80 MB download cost (which on Cloud Run can also OOM-kill the
+# container when Audiveris's JVM is still resident from a failed primary
+# attempt).
+RUN python - <<'PY'
+import os, urllib.request
+import oemer
+from oemer.ete import CHECKPOINTS_URL
+mod = os.path.dirname(oemer.__file__)
+ckpt_dirs = {
+    "1st_model.onnx":    os.path.join(mod, "checkpoints", "unet_big",  "model.onnx"),
+    "1st_weights.h5":    os.path.join(mod, "checkpoints", "unet_big",  "weights.h5"),
+    "2nd_model.onnx":    os.path.join(mod, "checkpoints", "seg_net",   "model.onnx"),
+    "2nd_weights.h5":    os.path.join(mod, "checkpoints", "seg_net",   "weights.h5"),
+}
+for fname, url in CHECKPOINTS_URL.items():
+    dst = ckpt_dirs.get(fname)
+    if dst is None: continue
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.exists(dst): continue
+    print(f"prefetch {fname} -> {dst}")
+    urllib.request.urlretrieve(url, dst)
+print("oemer checkpoints prefetched")
+PY
 
 # App
 WORKDIR /app

@@ -65,9 +65,16 @@ function startWorker() {
     workerProc = null;
     workerReady = null;
   });
-  workerProc.on("exit", (code) => {
-    console.error(`[omr_worker] exited code=${code}`);
-    failAll(new Error(`worker exited code=${code}`));
+  workerProc.on("exit", (code, signal) => {
+    console.error(`[omr_worker] exited code=${code} signal=${signal}`);
+    // SIGKILL with no exit code is the classic OOM-kill signature on Linux —
+    // surface that explicitly so the streamed error event tells the user
+    // something useful instead of a bare "worker exited code=null".
+    const oomKilled = signal === "SIGKILL" && code === null;
+    const msg = oomKilled
+      ? "OMR worker 被系統強制終止（記憶體不足）。請改用較小的圖片或 PDF。"
+      : `OMR worker 異常結束 (code=${code}${signal ? `, signal=${signal}` : ""})`;
+    failAll(new Error(msg));
     workerProc = null;
     workerReady = null;
   });
