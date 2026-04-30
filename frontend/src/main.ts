@@ -19,6 +19,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
 const fileInput = $<HTMLInputElement>("file-input");
+const cameraInput = $<HTMLInputElement>("camera-input");
 const appendInput = $<HTMLInputElement>("append-input");
 const playBtn = $<HTMLButtonElement>("play-btn");
 const stopBtn = $<HTMLButtonElement>("stop-btn");
@@ -117,6 +118,14 @@ fileInput.addEventListener("change", async () => {
   fileInput.value = ""; // allow re-selecting the same file later
 });
 
+cameraInput.addEventListener("change", async () => {
+  const f = cameraInput.files?.[0];
+  if (!f) return;
+  // Camera shots are JPGs that flow through the normal image OMR path.
+  await loadFile(f, "replace");
+  cameraInput.value = "";
+});
+
 appendInput.addEventListener("change", async () => {
   const f = appendInput.files?.[0];
   if (!f) return;
@@ -155,19 +164,32 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Click-to-select on a note → blue highlight, ready to start from there.
-sheet.setOnStepSelected((stepIdx) => {
+// Click-to-select on a note → sheet+key blue highlight, plays the chord
+// once, ready to start from there on space.
+sheet.setOnStepSelected(async (stepIdx) => {
   if (playState === "playing") {
     // Clicks during playback don't select — keep playing.
     return;
   }
-  if (stepIdx != null) {
-    const t = timeline[stepIdx]?.time ?? 0;
-    setStatus(
-      `已選擇 步 ${stepIdx + 1}/${timeline.length} (${t.toFixed(2)}s)。空白鍵從此處開始`,
-      "ok",
-    );
+  if (stepIdx == null) {
+    piano.clearSelection();
+    return;
   }
+  const step = timeline[stepIdx];
+  if (!step) return;
+  // Sticky blue highlight on the matching keys.
+  piano.setSelectedKeys(step.midis);
+  // Audible preview of all notes at this beat.
+  try {
+    await player.start();
+  } catch { /* ignore */ }
+  for (const n of step.notes) {
+    player.triggerAttackRelease([n.midi], Math.max(0.4, n.durationSec * 0.95));
+  }
+  setStatus(
+    `已選擇 步 ${stepIdx + 1}/${timeline.length} (${step.time.toFixed(2)}s)。空白鍵從此處開始`,
+    "ok",
+  );
 });
 
 // ===== loading pipeline =====
@@ -351,6 +373,9 @@ function startPlayback(fromIdx: number = 0) {
   if (playState === "playing") return;
   playState = "playing";
   currentIdx = Math.max(0, Math.min(fromIdx, timeline.length));
+  // Drop sticky selection so red active highlight shows cleanly.
+  piano.clearSelection();
+  sheet.setSelectedStep(null);
   sheet.cursorReset();
   // Honor any leading rest at the start of the score (pickup measure /
   // anacrusis). timeline[0].time is the first NOTE's onset in seconds; the

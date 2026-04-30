@@ -137,6 +137,29 @@ export class Piano {
    *  is sounding it.  Lets a long quarter overlap with a short 16th without
    *  the keyboard turning off mid-quarter. */
   private noteOnCounts: Map<number, number> = new Map();
+  /** Sticky selection (blue) shown while paused/idle. Cleared when a new
+   *  selection arrives. Visually overlaid by .active during playback. */
+  private selectedMidis: Set<number> = new Set();
+
+  setSelectedKeys(midis: number[]) {
+    for (const m of this.selectedMidis) {
+      const k = this.keys.get(m);
+      if (k) k.classList.remove("selected");
+    }
+    this.selectedMidis.clear();
+    for (const m of midis) {
+      const k = this.keys.get(m);
+      if (k) {
+        k.classList.add("selected");
+        this.selectedMidis.add(m);
+      }
+    }
+    if (midis.length) this.scrollIntoView(midis);
+  }
+
+  clearSelection() {
+    this.setSelectedKeys([]);
+  }
 
   noteOn(midi: number) {
     const c = (this.noteOnCounts.get(midi) ?? 0) + 1;
