@@ -88,6 +88,7 @@ export class SheetView {
 
   async loadXml(xml: string) {
     this.clearActive();
+    this.lastScrollTargetY = -1e9; // forget previous score's scroll memo
     // Strip elements that crash OSMD's render path. Audiveris occasionally
     // emits an <octave-shift> with an incomplete partner (Fraction.lte()
     // gets called against undefined) — losing the 8va/15ma symbol is
@@ -366,16 +367,36 @@ export class SheetView {
     if (els.length) this.scrollNoteIntoView(els[0]);
   }
 
+  private lastScrollTargetY = -1e9;
+
   private scrollNoteIntoView(el: SVGGElement) {
     try {
       const rect = el.getBoundingClientRect();
       const cont = this.container.parentElement; // sheet-panel
       if (!cont) return;
       const cRect = cont.getBoundingClientRect();
-      if (rect.top < cRect.top + 40 || rect.bottom > cRect.bottom - 20) {
-        const targetTop = cont.scrollTop + (rect.top - cRect.top) - cRect.height * 0.35;
-        cont.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
-      }
+
+      // Only scroll when the active note is FULLY outside the visible
+      // window — within a single staff system the note's vertical position
+      // stays the same, so this skips per-note jitter and only fires when
+      // the cursor crosses to a new line. Big win on small phone screens
+      // where sheet panel is ~200 px tall.
+      const fullyVisible =
+        rect.top >= cRect.top - 1 && rect.bottom <= cRect.bottom + 1;
+      if (fullyVisible) return;
+
+      // Place the note ~25% from the top so there's room to read upcoming
+      // measures below, and so a system + the start of the next system are
+      // both visible.
+      const desiredFromTop = cRect.height * 0.25;
+      const targetTop = cont.scrollTop + (rect.top - cRect.top) - desiredFromTop;
+
+      // Debounce: ignore tiny adjustments that don't actually move us into
+      // a new system (avoids smooth-scroll animation overlap on rapid notes).
+      const clamped = Math.max(0, targetTop);
+      if (Math.abs(clamped - this.lastScrollTargetY) < 24) return;
+      this.lastScrollTargetY = clamped;
+      cont.scrollTo({ top: clamped, behavior: "smooth" });
     } catch (_) { /* noop */ }
   }
 
