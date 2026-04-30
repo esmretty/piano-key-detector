@@ -1,4 +1,5 @@
 import "./style.css";
+import { APP_VERSION } from "./version";
 import { Piano } from "./piano";
 import { Player } from "./player";
 import { SheetView } from "./sheet";
@@ -28,7 +29,7 @@ const soundToggle = $<HTMLInputElement>("sound-toggle");
 const layoutSelect = $<HTMLSelectElement>("layout-select");
 const statusEl = $("status");
 const versionEl = $("app-version");
-versionEl.textContent = (import.meta.env.VITE_APP_VERSION as string) || "dev";
+versionEl.textContent = APP_VERSION;
 const sheetContainer = $("sheet-container");
 const pianoSvg = document.getElementById("piano") as unknown as SVGSVGElement;
 const pianoScroll = $("piano-scroll");
