@@ -343,8 +343,42 @@ def upscale_if_needed(src_path, out_dir, target_px=2400):
         return src_path
 
 
+def downscale_if_huge(src_path, out_dir, max_px=2800, target_px=2400):
+    """Phone cameras emit 4032×3024 (12 MP) which Oemer's preprocessing
+    blows up into ~3 GB of float32 arrays — enough to OOM-kill a 4 GiB
+    Cloud Run instance. Anything wider than max_px gets resampled down
+    to target_px (still well above the 1500-px floor where dots/beams
+    become legible). Audiveris already ran from the original file, so
+    this only affects the Oemer fallback path."""
+    try:
+        from PIL import Image
+    except Exception:
+        return src_path
+    try:
+        img = Image.open(src_path)
+        w, h = img.size
+        if w <= max_px:
+            return src_path
+        scale = target_px / w
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        small = img.resize((new_w, new_h), Image.LANCZOS)
+        ext = os.path.splitext(src_path)[1].lower() or ".png"
+        if ext in (".jpg", ".jpeg"):
+            ext = ".png"
+        new_path = os.path.join(out_dir, f"downscaled_{w}_{new_w}{ext}")
+        small.save(new_path)
+        sys.stderr.write(f"[omr_worker] downscaled {w}x{h} -> {new_w}x{new_h}\n")
+        sys.stderr.flush()
+        return new_path
+    except Exception as e:
+        sys.stderr.write(f"[omr_worker] downscale failed: {e}\n")
+        return src_path
+
+
 def handle(req, ete):
-    img_path = upscale_if_needed(req["img_path"], req["out_dir"])
+    img_path = downscale_if_huge(req["img_path"], req["out_dir"])
+    img_path = upscale_if_needed(img_path, req["out_dir"])
     args = Namespace(
         img_path=img_path,
         output_path=req["out_dir"],

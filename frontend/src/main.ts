@@ -86,6 +86,41 @@ function hideProgress() {
 
 soundToggle.addEventListener("change", () => player.setEnabled(soundToggle.checked));
 
+// Fullscreen toggle. Tap to enter; tap again (or hit Esc) to exit. Requires
+// a user gesture, so this only fires on the click handler — not from code.
+const fullscreenBtn = $<HTMLButtonElement>("fullscreen-btn");
+const docEl = document.documentElement as HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>;
+};
+const docAny = document as Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+function isFullscreen() {
+  return !!(document.fullscreenElement || docAny.webkitFullscreenElement);
+}
+fullscreenBtn.addEventListener("click", async () => {
+  try {
+    if (isFullscreen()) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (docAny.webkitExitFullscreen) await docAny.webkitExitFullscreen();
+    } else {
+      if (docEl.requestFullscreen) await docEl.requestFullscreen();
+      else if (docEl.webkitRequestFullscreen) await docEl.webkitRequestFullscreen();
+    }
+  } catch (e) {
+    console.warn("[fullscreen] toggle failed:", e);
+  }
+});
+function syncFullscreenIcon() {
+  const on = isFullscreen();
+  fullscreenBtn.textContent = on ? "⤡" : "⛶";
+  fullscreenBtn.title = on ? "離開全螢幕" : "全螢幕";
+}
+document.addEventListener("fullscreenchange", syncFullscreenIcon);
+// Safari uses a vendor-prefixed event; cast to any since it's not in the DOM types.
+(document as unknown as EventTarget).addEventListener("webkitfullscreenchange", syncFullscreenIcon);
+
 // Layout selector — switches OSMD rendering style (default / compact / big).
 // Persist the choice so refresh keeps it.
 const SAVED_LAYOUT_KEY = "pkd.layout";
