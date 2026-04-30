@@ -44,6 +44,20 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
+}
+
+.app-version {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .layout-select {

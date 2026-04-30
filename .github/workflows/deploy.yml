@@ -90,6 +90,14 @@ jobs:
             --config=cloudbuild.base.yaml \
             --substitutions=COMMIT_SHA=${{ github.sha }}
 
+      - name: Inject build version into frontend
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BUILD_TIME=$(TZ=Asia/Taipei date +"%m-%d %H:%M")
+          VERSION="${SHORT_SHA} · ${BUILD_TIME}"
+          echo "VITE_APP_VERSION=\"${VERSION}\"" > frontend/.env.production
+          echo "Injected version: ${VERSION}"
+
       - name: Deploy app to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
