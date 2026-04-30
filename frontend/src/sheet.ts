@@ -89,6 +89,7 @@ export class SheetView {
   async loadXml(xml: string) {
     this.clearActive();
     this.lastScrollTargetY = -1e9; // forget previous score's scroll memo
+    this.currentSystemY = -1e9;
     // Strip elements that crash OSMD's render path. Audiveris occasionally
     // emits an <octave-shift> with an incomplete partner (Fraction.lte()
     // gets called against undefined) — losing the 8va/15ma symbol is
@@ -368,6 +369,11 @@ export class SheetView {
   }
 
   private lastScrollTargetY = -1e9;
+  /** Doc-Y of the system we last scrolled to. Used so the active highlight
+   *  hopping between treble (RH) and bass (LH) staves of the SAME grand-
+   *  staff system doesn't trigger a scroll — treble↔bass differs by ~100 px
+   *  while system↔system differs by ~250 px. */
+  private currentSystemY = -1e9;
 
   private scrollNoteIntoView(el: SVGGElement) {
     try {
@@ -376,28 +382,45 @@ export class SheetView {
       if (!cont) return;
       const cRect = cont.getBoundingClientRect();
 
-      // Only scroll when the active note is FULLY outside the visible
-      // window — within a single staff system the note's vertical position
-      // stays the same, so this skips per-note jitter and only fires when
-      // the cursor crosses to a new line. Big win on small phone screens
-      // where sheet panel is ~200 px tall.
-      const fullyVisible =
-        rect.top >= cRect.top - 1 && rect.bottom <= cRect.bottom + 1;
-      if (fullyVisible) return;
+      // Convert the note's viewport-Y to document-Y inside the scroll
+      // container so it's stable across scroll positions.
+      const docNoteY = rect.top + cont.scrollTop - cRect.top;
 
-      // Place the note ~25% from the top so there's room to read upcoming
-      // measures below, and so a system + the start of the next system are
-      // both visible.
-      const desiredFromTop = cRect.height * 0.25;
-      const targetTop = cont.scrollTop + (rect.top - cRect.top) - desiredFromTop;
+      // First note ever / after reload: just scroll to it.
+      if (this.currentSystemY < -1e8) {
+        this.scrollToNote(rect, cont, cRect);
+        this.currentSystemY = docNoteY;
+        return;
+      }
 
-      // Debounce: ignore tiny adjustments that don't actually move us into
-      // a new system (avoids smooth-scroll animation overlap on rapid notes).
-      const clamped = Math.max(0, targetTop);
-      if (Math.abs(clamped - this.lastScrollTargetY) < 24) return;
-      this.lastScrollTargetY = clamped;
-      cont.scrollTo({ top: clamped, behavior: "smooth" });
+      // Same system as last scroll? Treble↔bass within a grand staff is
+      // ~100 px apart; next system is ≥ ~200 px away. 180 px lives in the
+      // gap between both, so RH/LH bouncing is silent and a real line
+      // change still triggers scroll.
+      const SAME_SYSTEM_RADIUS = 180;
+      const sameSystem = Math.abs(docNoteY - this.currentSystemY) < SAME_SYSTEM_RADIUS;
+
+      if (sameSystem) {
+        // Within same system: only scroll if note is genuinely off-screen
+        // (e.g., user manually scrolled away). Otherwise stay put.
+        const fullyVisible =
+          rect.top >= cRect.top - 1 && rect.bottom <= cRect.bottom + 1;
+        if (fullyVisible) return;
+      }
+
+      this.scrollToNote(rect, cont, cRect);
+      this.currentSystemY = docNoteY;
     } catch (_) { /* noop */ }
+  }
+
+  private scrollToNote(rect: DOMRect, cont: HTMLElement, cRect: DOMRect) {
+    // Place the note ~25% from the top so the rest of its system + start
+    // of the next system sit nicely below.
+    const targetTop = cont.scrollTop + (rect.top - cRect.top) - cRect.height * 0.25;
+    const clamped = Math.max(0, targetTop);
+    if (Math.abs(clamped - this.lastScrollTargetY) < 24) return;
+    this.lastScrollTargetY = clamped;
+    cont.scrollTo({ top: clamped, behavior: "smooth" });
   }
 
   clearActive() {
