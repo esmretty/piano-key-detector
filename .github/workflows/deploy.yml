@@ -1,14 +1,32 @@
 name: Deploy to Cloud Run
 
+# Day-to-day code-only pushes are FAST (~2 min) because the heavy stuff
+# lives in a separate base image at piano-base/runtime:latest.
+#
+# This workflow:
+#   1. Checks if the base image needs to be (re)built. It does when:
+#        - the image isn't in Artifact Registry yet (first-time setup), or
+#        - Dockerfile.base / cloudbuild.base.yaml changed in this push, or
+#        - the user manually ran with rebuild_base=true.
+#      Otherwise the slow base build is skipped entirely.
+#   2. Deploys the slim app image (FROM the base) to Cloud Run.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rebuild_base:
+        description: "Force a rebuild of the base image"
+        type: boolean
+        default: false
 
 env:
   PROJECT_ID: piano-key-detector
   REGION: asia-east1
   SERVICE: piano-key-detector
+  BASE_REPO: piano-base
+  BASE_IMAGE_TAG: asia-east1-docker.pkg.dev/piano-key-detector/piano-base/runtime:latest
 
 jobs:
   deploy:
@@ -18,6 +36,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need previous commit so we can diff against it
 
       - name: Auth to GCP
         uses: google-github-actions/auth@v2
@@ -29,7 +49,48 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Deploy to Cloud Run
+      - name: Decide whether to rebuild base image
+        id: base
+        run: |
+          NEED=false
+          REASON=cached
+          if [[ "${{ inputs.rebuild_base }}" == "true" ]]; then
+            NEED=true
+            REASON="manual rebuild"
+          elif ! gcloud artifacts docker images describe "${{ env.BASE_IMAGE_TAG }}" \
+                  --project=${{ env.PROJECT_ID }} >/dev/null 2>&1; then
+            NEED=true
+            REASON="base image missing in Artifact Registry"
+          elif git diff --name-only HEAD~1 HEAD 2>/dev/null | \
+                  grep -qE '^(Dockerfile\.base|cloudbuild\.base\.yaml)$'; then
+            NEED=true
+            REASON="Dockerfile.base changed"
+          fi
+          echo "need=$NEED" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "Base build needed: $NEED ($REASON)"
+
+      - name: Ensure base Artifact Registry repo
+        if: steps.base.outputs.need == 'true'
+        run: |
+          gcloud artifacts repositories describe ${{ env.BASE_REPO }} \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} >/dev/null 2>&1 || \
+          gcloud artifacts repositories create ${{ env.BASE_REPO }} \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --description="Heavy base image for piano-key-detector"
+
+      - name: Build & push base image
+        if: steps.base.outputs.need == 'true'
+        run: |
+          gcloud builds submit \
+            --project=${{ env.PROJECT_ID }} \
+            --config=cloudbuild.base.yaml \
+            --substitutions=COMMIT_SHA=${{ github.sha }}
+
+      - name: Deploy app to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
             --source . \

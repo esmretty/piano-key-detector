@@ -1,0 +1,94 @@
+# syntax=docker/dockerfile:1.7
+#
+# Base runtime image for piano-key-detector.
+#
+# Contains everything heavy that almost never changes:
+#   - Ubuntu 24.04 + system libs needed by Audiveris/Oemer
+#   - Node 22
+#   - Audiveris 5.10.2 (Java app + bundled JRE, ~300 MB)
+#   - Python venv with Oemer + onnxruntime
+#   - Pre-downloaded Oemer ML checkpoints
+#
+# Built rarely (only when this file changes) and pushed to:
+#   asia-east1-docker.pkg.dev/piano-key-detector/piano-base/runtime:latest
+#
+# The slim app Dockerfile then uses this as FROM, so normal code-only
+# deploys only rebuild ~50 MB of app layers and finish in 1–2 min.
+
+# ---- Stage A: download the Audiveris .deb ----------------------------------
+FROM debian:bookworm-slim AS audi-fetch
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+RUN curl -L --retry 3 -o /tmp/audiveris.deb \
+    https://github.com/Audiveris/audiveris/releases/download/5.10.2/Audiveris-5.10.2-ubuntu24.04-x86_64.deb
+
+
+# ---- Stage B: actual base image --------------------------------------------
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      gnupg \
+      libgl1 \
+      libglib2.0-0 \
+      libxml2-utils \
+      libxext6 \
+      libxrender1 \
+      libxtst6 \
+      libfreetype6 \
+      libfontconfig1 \
+      tesseract-ocr \
+      tesseract-ocr-eng \
+      poppler-utils \
+      python3 \
+      python3-pip \
+      python3-venv \
+      tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=audi-fetch /tmp/audiveris.deb /tmp/audiveris.deb
+RUN mkdir -p /usr/share/applications /usr/share/desktop-directories /usr/share/icons/hicolor && \
+    apt-get update && \
+    apt-get install -y /tmp/audiveris.deb && \
+    rm -rf /var/lib/apt/lists/* /tmp/audiveris.deb && \
+    dpkg -L audiveris | grep -E '/(audiveris|Audiveris)(\.sh)?$' || \
+      (echo "===== audiveris install layout =====" && dpkg -L audiveris | head -40 && false)
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+RUN pip install --no-cache-dir oemer onnxruntime
+
+RUN python -c "import oemer.ete; print('oemer ete imported')"
+
+RUN python - <<'PY'
+import os, urllib.request
+import oemer
+from oemer.ete import CHECKPOINTS_URL
+mod = os.path.dirname(oemer.__file__)
+ckpt_dirs = {
+    "1st_model.onnx":    os.path.join(mod, "checkpoints", "unet_big",  "model.onnx"),
+    "1st_weights.h5":    os.path.join(mod, "checkpoints", "unet_big",  "weights.h5"),
+    "2nd_model.onnx":    os.path.join(mod, "checkpoints", "seg_net",   "model.onnx"),
+    "2nd_weights.h5":    os.path.join(mod, "checkpoints", "seg_net",   "weights.h5"),
+}
+for fname, url in CHECKPOINTS_URL.items():
+    dst = ckpt_dirs.get(fname)
+    if dst is None: continue
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.exists(dst): continue
+    print(f"prefetch {fname} -> {dst}")
+    urllib.request.urlretrieve(url, dst)
+print("oemer checkpoints prefetched")
+PY
+
+# Fixed paths the app relies on. Override via env at runtime if needed.
+ENV NODE_ENV=production \
+    AUDIVERIS_EXE=/opt/audiveris/bin/Audiveris \
+    PYTHON_BIN=/opt/venv/bin/python \
+    OEMER_BIN=/opt/venv/bin/oemer
