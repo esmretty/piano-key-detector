@@ -2,7 +2,11 @@
 # Triggered by .github/workflows/build-base.yml only when Dockerfile.base changes.
 
 steps:
+  # BuildKit must be enabled — Dockerfile.base uses `RUN python - <<'PY'`
+  # heredoc syntax which the legacy docker builder doesn't understand.
   - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - build
       - -f
