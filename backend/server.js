@@ -113,6 +113,32 @@ function onWorkerLine(line) {
   }
 }
 
+/**
+ * Translate raw OMR error messages (Python tracebacks, Java stack traces,
+ * exit codes) into one short Chinese sentence the user can act on. Unknown
+ * patterns fall through unchanged so we never hide truly novel failures.
+ */
+function friendlyOmrError(raw) {
+  if (!raw) return raw;
+  const s = String(raw);
+  if (/SIGKILL|OOM|被系統強制|Memory limit/i.test(s)) {
+    return "OMR 用太多記憶體被系統中止。請改用較小的圖片或 PDF，或拍特寫小段。";
+  }
+  if (/Oemer 處理超過/.test(s)) {
+    return "OMR 處理太久（超過 3 分鐘）已被中止。建議拍清楚一段（4–8 小節）即可，避免整頁全拍。";
+  }
+  if (/AgglomerativeClustering|sample.{0,40}minimum.{0,40}required|Found array with 1 sample/i.test(s)) {
+    return "OMR 在這張照片裡只看到 1 組譜表，無法分析。請拍包含完整 2 行以上五線譜的範圍，並保持鏡頭平行。";
+  }
+  if (/Sheet.*flagged as invalid|Error in reaching step|No system found/i.test(s)) {
+    return "OMR 認不出五線譜（可能角度太斜、光線不足，或畫面有太多背景）。請把譜放平、保持鏡頭平行、避開陰影，再試一次。";
+  }
+  if (/did not produce a \.mxl/i.test(s)) {
+    return "Audiveris 沒能輸出結果——通常是相片解析度不足或譜面太傾斜。請靠近一點重拍。";
+  }
+  return s;
+}
+
 function failAll(err) {
   if (workerReadyReject) workerReadyReject(err);
   workerReadyResolve = null;
@@ -123,8 +149,23 @@ function failAll(err) {
 
 async function workerExtract(imgPath, outDir) {
   await startWorker();
+  const TIMEOUT_MS = Number(process.env.OEMER_TIMEOUT_MS || 3 * 60 * 1000);
   return new Promise((resolve, reject) => {
-    workerQueue.push({ resolve, reject });
+    let settled = false;
+    const wrap = (fn) => (v) => { if (!settled) { settled = true; clearTimeout(t); fn(v); } };
+    const t = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      // Drop our slot from the queue so the next request doesn't get our reply.
+      const idx = workerQueue.findIndex((p) => p.reject === wrappedReject);
+      if (idx >= 0) workerQueue.splice(idx, 1);
+      // Respawn the worker — Oemer's internal state may be wedged.
+      try { workerProc?.kill("SIGKILL"); } catch {}
+      reject(new Error(`Oemer 處理超過 ${TIMEOUT_MS / 1000}s — 圖片可能太大或太複雜`));
+    }, TIMEOUT_MS);
+    const wrappedResolve = wrap(resolve);
+    const wrappedReject = wrap(reject);
+    workerQueue.push({ resolve: wrappedResolve, reject: wrappedReject });
     workerProc.stdin.write(
       JSON.stringify({
         img_path: imgPath,
@@ -367,7 +408,16 @@ app.post("/api/omr", upload.single("file"), async (req, res) => {
           xmlPath = r.xml_path;
           elapsedS = r.elapsed_s;
         } catch (workerErr) {
-          console.warn("[omr_worker] failed, falling back:", workerErr.message);
+          // If the persistent worker is still alive, the failure is from
+          // Oemer itself processing this image (bad photo, sklearn cluster
+          // error, etc.). Re-running legacy oemer.exe with the same input
+          // will fail the same way and waste another 5+ minutes — surface
+          // the real error instead. Only fall back when the worker is dead
+          // (start failure, OOM kill, etc.).
+          if (workerProc) {
+            throw workerErr;
+          }
+          console.warn("[omr_worker] worker dead, falling back to legacy oemer.exe:", workerErr.message);
           xmlPath = await runOemer(imgs[i], pageDir);
         }
         xmls.push(await fsp.readFile(xmlPath, "utf8"));
@@ -406,11 +456,11 @@ app.post("/api/omr", upload.single("file"), async (req, res) => {
     send({ type: "done", musicxml: fixedXml, pages: pageCount });
   } catch (err) {
     console.error("[OMR] failed:", err);
+    const raw = String(err && err.message ? err.message : err);
     send({
       type: "error",
-      message: String(err && err.message ? err.message : err),
-      hint:
-        "確認 Oemer 已安裝並在 PATH 上。Windows: pip install oemer，並把 %APPDATA%\\Python\\Python314\\Scripts 加入 PATH 或設 OEMER_BIN 環境變數。",
+      message: friendlyOmrError(raw),
+      raw,
     });
   } finally {
     res.end();
